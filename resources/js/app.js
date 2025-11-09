@@ -7,22 +7,33 @@
 import './bootstrap';
 import { createApp } from 'vue';
 
-// Import components
 import PurchaseOrderForm from './components/PurchaseOrderForm.vue';
 import GoodsReceiptForm from './components/GoodsReceiptForm.vue';
+import DishForm from './components/DishForm.vue';
+import OrderForm from './components/OrderForm.vue';
 
-// Mount PurchaseOrderForm if its container exists
-const poFormContainer = document.getElementById('purchase-order-form');
-if (poFormContainer) {
-    const poApp = createApp({});
-    poApp.component('purchase-order-form', PurchaseOrderForm);
-    poApp.mount(poFormContainer);
-}
+const app = createApp({});
 
-// Mount GoodsReceiptForm if its container exists
-const grFormContainer = document.getElementById('goods-receipt-form');
-if (grFormContainer) {
-    const grApp = createApp({});
-    grApp.component('goods-receipt-form', GoodsReceiptForm);
-    grApp.mount(grFormContainer);
-}
+app.component('purchase-order-form', PurchaseOrderForm);
+app.component('goods-receipt-form', GoodsReceiptForm);
+app.component('dish-form', DishForm);
+app.component('order-form', OrderForm);
+
+app.mount('#app');
+
+// Create separate Vue instances for specific forms
+document.querySelectorAll('[id^="purchase-order-form-"]').forEach(el => {
+    createApp(PurchaseOrderForm).mount(el);
+});
+
+document.querySelectorAll('[id^="goods-receipt-form-"]').forEach(el => {
+    createApp(GoodsReceiptForm).mount(el);
+});
+
+document.querySelectorAll('[id^="dish-form-"]').forEach(el => {
+    createApp(DishForm).mount(el);
+});
+
+document.querySelectorAll('[id^="order-form-"]').forEach(el => {
+    createApp(OrderForm).mount(el);
+});

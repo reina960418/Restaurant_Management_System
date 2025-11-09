@@ -7,7 +7,7 @@
     <!-- Quick Stats -->
     <div class="row mb-4">
         <div class="col-md-6">
-            <div class="card text-white bg-warning">
+            <div class="card text-white bg-info">
                 <div class="card-body">
                     <h5 class="card-title">待處理採購單</h5>
                     <p class="card-text fs-1">{{ $pendingPurchaseOrders }}</p>
