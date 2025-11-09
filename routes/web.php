@@ -1,4 +1,5 @@
 <?php
+use App\Http\Controllers\AiAnalysisController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DishController;
 use App\Http\Controllers\GoodsReceiptController;
@@ -24,3 +25,6 @@ Route::post('statements', [StatementController::class, 'generate'])->name('state
 
 Route::get('order-statements', [OrderStatementController::class, 'query'])->name('order_statements.query');
 Route::post('order-statements', [OrderStatementController::class, 'generate'])->name('order_statements.generate');
+
+Route::get('ai-analysis', [AiAnalysisController::class, 'showUploadForm'])->name('ai.upload.form');
+Route::post('ai-analysis', [AiAnalysisController::class, 'analyze'])->name('ai.analyze');

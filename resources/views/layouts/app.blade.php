@@ -43,6 +43,9 @@
                         <li class="nav-item">
                             <a class="nav-link {{ request()->is('orders*') ? 'active' : '' }}" href="{{ route('orders.create') }}"><i class="bi bi-cart-fill"></i> 點餐</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->is('ai-analysis*') ? 'active' : '' }}" href="{{ route('ai.upload.form') }}"><i class="bi bi-robot"></i> AI 銷售分析</a>
+                        </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="bi bi-printer-fill"></i> 對帳單
