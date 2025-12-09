@@ -34,10 +34,10 @@
                 </div>
             </div>
             <div class="card-body">
-                @if($goodsReceipts->isEmpty())
-                    <p class="text-center">此區間內沒有進料紀錄。</p>
-                @else
-                    @php $totalAmount = 0; @endphp
+                @php $totalAmount = 0; @endphp
+                    @if($goodsReceipts->isEmpty())
+                        <p class="text-center">此區間內沒有進料紀錄。</p>
+                    @else
                     @foreach($goodsReceipts as $receipt)
                         <h5 class="mt-4">進料單 #{{ $receipt->id }} - 日期: {{ $receipt->receipt_date }}</h5>
                         <table class="table table-sm table-bordered">

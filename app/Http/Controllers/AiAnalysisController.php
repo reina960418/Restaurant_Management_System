@@ -14,13 +14,44 @@ class AiAnalysisController extends Controller
 
     public function analyze(Request $request)
     {
-        set_time_limit(120); // Increase execution time to 120 seconds for this request
+        try {
+            set_time_limit(120); // Increase execution time to 120 seconds for this request
 
-        $request->validate([
-            'sales_data' => 'required|file|mimes:csv,txt',
-        ]);
+            $request->validate([
+                'sales_data' => 'required|file|mimes:csv,txt,pdf',
+            ]);
 
-        $rawContent = $request->file('sales_data')->get();
+        $file = $request->file('sales_data');
+        $extension = strtolower($file->getClientOriginalExtension());
+        $rawContent = '';
+
+        if ($extension === 'pdf') {
+            try {
+                // First try standard PDF text extraction
+                $parser = new \Smalot\PdfParser\Parser();
+                $pdf = $parser->parseFile($file->getPathname());
+                $rawContent = $pdf->getText();
+                
+                // If text extraction returns empty, try OCR
+                if (empty(trim($rawContent))) {
+                    try {
+                        $rawContent = $this->extractTextWithOcr($file->getPathname());
+                    } catch (\Exception $ocrException) {
+                        // Return error as stream for SSE
+                        return response()->stream(function () use ($ocrException) {
+                            echo "OCR 錯誤：" . $ocrException->getMessage() . "\n";
+                            echo "請確認您已安裝 Tesseract OCR 和 Poppler，並已加入系統 PATH。";
+                        }, 200, ['Content-Type' => 'text/event-stream']);
+                    }
+                }
+            } catch (\Exception $e) {
+                return response()->stream(function () use ($e) {
+                    echo "PDF 解析錯誤：" . $e->getMessage();
+                }, 200, ['Content-Type' => 'text/event-stream']);
+            }
+        } else {
+            $rawContent = $file->get();
+        }
         
         // Detect and convert encoding to UTF-8
         $encoding = mb_detect_encoding($rawContent, mb_detect_order(), true);
@@ -29,6 +60,8 @@ class AiAnalysisController extends Controller
             $encoding = 'UTF-8'; 
         }
         $fileContent = mb_convert_encoding($rawContent, 'UTF-8', $encoding);
+
+        \Illuminate\Support\Facades\Log::info('Extracted File Content:', ['content' => substr($fileContent, 0, 500)]); // Log first 500 chars
 
         $prompt = "你是一位專業的餐廳數據分析師。請根據以下今日的點餐紀錄，提供一份簡潔的銷售分析報告。報告應包含：
 1.  最受歡迎的菜色 Top 3。
@@ -41,36 +74,107 @@ $fileContent
 ---
 ";
 
-        try {
-            $response = Http::timeout(120)->post(config('ollama.url') . '/api/generate', [
-                'model' => config('ollama.model'),
-                'prompt' => $prompt,
-                'stream' => false,
-            ]);
+        return response()->stream(function () use ($prompt) {
+            try {
+                $response = Http::timeout(120)->post(config('ollama.url') . '/api/generate', [
+                    'model' => config('ollama.model'),
+                    'prompt' => $prompt,
+                    'stream' => true, // Enable streaming from Ollama
+                ]);
 
-            if ($response->failed()) {
-                return back()->with('error', '無法連接到 AI 分析服務。錯誤訊息：' . $response->body());
-            }
+                if ($response->failed()) {
+                    echo "Error: " . $response->body();
+                    return;
+                }
 
-            // Handle the newline-delimited JSON response from Ollama
-            $lines = explode("\n", $response->body());
-            $fullResponse = '';
-            foreach ($lines as $line) {
-                if (!empty($line)) {
-                    $json = json_decode($line, true);
-                    if (isset($json['response'])) {
-                        $fullResponse .= $json['response'];
+                $body = $response->toPsrResponse()->getBody();
+
+                while (!$body->eof()) {
+                    $line = \App\Http\Controllers\AiAnalysisController::readJsonLine($body);
+                    if ($line) {
+                        $json = json_decode($line, true);
+                        if (isset($json['response'])) {
+                            echo $json['response'];
+                            if (ob_get_level() > 0) {
+                                ob_flush();
+                            }
+                            flush();
+                        }
+                        if (isset($json['done']) && $json['done']) {
+                            break;
+                        }
                     }
                 }
+            } catch (\Exception $e) {
+                echo "Error: " . $e->getMessage();
             }
-            $analysis = $fullResponse;
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no', // Disable buffering for Nginx
+        ]);
+        } catch (\Exception $globalException) {
+            return response()->stream(function () use ($globalException) {
+                echo "**錯誤：** " . $globalException->getMessage() . "\n\n";
+                echo "如果您嘗試上傳圖片式 PDF，請確認您已安裝 Tesseract OCR 和 Poppler。";
+            }, 200, ['Content-Type' => 'text/event-stream']);
+        }
+    }
 
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            return back()->with('error', '無法連接到 Ollama 服務，請確認服務正在運行中，且位址設定正確。錯誤訊息：' . $e->getMessage());
-        } catch (\Exception $e) {
-            return back()->with('error', '分析過程中發生錯誤：' . $e->getMessage());
+    private static function readJsonLine($stream) {
+        $buffer = '';
+        while (!$stream->eof()) {
+            $char = $stream->read(1);
+            if ($char === "\n") {
+                return $buffer;
+            }
+            $buffer .= $char;
+        }
+        return $buffer;
+    }
+
+    /**
+     * Extract text from PDF using OCR (for image-based PDFs)
+     */
+    private function extractTextWithOcr(string $pdfPath): string
+    {
+        $tempDir = storage_path('app/temp_ocr_' . uniqid());
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
         }
 
-        return view('ai_analysis.result', compact('analysis'));
+        try {
+            // Convert PDF to images using Spatie PDF-to-image
+            $pdf = new \Spatie\PdfToImage\Pdf($pdfPath);
+            $numberOfPages = $pdf->getNumberOfPages();
+            
+            $extractedText = '';
+            
+            for ($page = 1; $page <= $numberOfPages; $page++) {
+                $imagePath = $tempDir . '/page_' . $page . '.png';
+                $pdf->setPage($page)->saveImage($imagePath);
+                
+                // Run OCR on each page using Tesseract
+                $ocr = new \thiagoalessio\TesseractOCR\TesseractOCR($imagePath);
+                $ocr->lang('chi_tra', 'eng'); // Traditional Chinese + English
+                
+                $pageText = $ocr->run();
+                $extractedText .= $pageText . "\n\n";
+                
+                // Clean up the temporary image
+                if (file_exists($imagePath)) {
+                    unlink($imagePath);
+                }
+            }
+            
+            return $extractedText;
+            
+        } finally {
+            // Clean up temp directory
+            if (is_dir($tempDir)) {
+                rmdir($tempDir);
+            }
+        }
     }
 }

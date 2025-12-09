@@ -33,10 +33,10 @@
                 </div>
             </div>
             <div class="card-body">
+                @php $totalRevenue = 0; @endphp
                 @if($orders->isEmpty())
                     <p class="text-center">此區間內沒有任何訂單。</p>
                 @else
-                    @php $totalRevenue = 0; @endphp
                     @foreach($orders as $order)
                         <h5 class="mt-4">訂單 #{{ $order->id }} - 日期: {{ $order->created_at->format('Y-m-d H:i') }} (桌號: {{ $order->table_number ?? 'N/A' }})</h5>
                         <table class="table table-sm table-bordered">

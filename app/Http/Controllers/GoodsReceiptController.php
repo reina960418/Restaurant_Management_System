@@ -108,7 +108,7 @@ class GoodsReceiptController extends Controller
      */
     public function edit(GoodsReceipt $goodsReceipt)
     {
-        $goodsReceipt->load('items');
+        $goodsReceipt->load('items.ingredient');
         $purchaseOrders = PurchaseOrder::with('supplier')
                                     ->whereIn('status', ['pending', 'partially_received', 'completed']) // Also include completed in case we need to edit
                                     ->get();
